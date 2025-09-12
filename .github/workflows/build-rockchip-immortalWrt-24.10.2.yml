@@ -114,45 +114,76 @@ jobs:
           else
             echo "❎ 未启用 luci-app-store"
           fi
-          
 
-      - name: Building Rockchip ImmortalWrt
+      - name: Install build dependencies
         run: |
-          profiles="${{ github.event.inputs.profile }}"
-          include_docker="${{ github.event.inputs.include_docker }}"
-          rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
+          sudo apt update
+          sudo apt install -y build-essential clang flex bison g++ gawk gcc-multilib \
+            g++-multilib gettext git libncurses5-dev libssl-dev python3-distutils \
+            rsync unzip zlib1g-dev file wget    
+      - name: Clone wishdq ImmortalWrt source
+        run: |
+          git clone https://github.com/wishdq/immortalwrt.git -b master openwrt
+          cd openwrt
+          # 如果有 submodules 或 feeds
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Copy custom config
+        run: |
+          cd openwrt
+          cp ../rockchip/imm.config .config
+          # 如果 .config 里还没启用你的 profile
+          # 可以直接用 make menuconfig 或 echo "CONFIG_TARGET_PROFILE_rk3568_liontron-d3568=y" >> .config
+          make defconfig
+
+      - name: Build Image
+        run: |
+          cd openwrt
+          make -j$(nproc) || make -j1 V=s
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: immortalwrt-rockchip-wishdq
+          path: openwrt/bin/targets/rockchip/armv8  # 根据目标目录调整路径
+
+      # - name: Building Rockchip ImmortalWrt
+      #   run: |
+      #     profiles="${{ github.event.inputs.profile }}"
+      #     include_docker="${{ github.event.inputs.include_docker }}"
+      #     rootfs_partsize="${{ github.event.inputs.rootfs_partsize }}"
           
-          IFS=',' read -r -a profile_array <<< "$profiles"
+      #     IFS=',' read -r -a profile_array <<< "$profiles"
           
-          for profile in "${profile_array[@]}"; do
-            echo "Building for profile: $profile"
+      #     for profile in "${profile_array[@]}"; do
+      #       echo "Building for profile: $profile"
             
-            docker run --rm -i \
-              --user root \
-              -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
-              -v "${{ github.workspace }}/files/etc/uci-defaults:/home/build/immortalwrt/files/etc/uci-defaults" \
-              -v "${{ github.workspace }}/arch/arch.conf:/home/build/immortalwrt/files/etc/opkg/arch.conf" \
-              -v "${{ github.workspace }}/rockchip/imm.config:/home/build/immortalwrt/.config" \
-              -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
-              -v "${{ github.workspace }}/rockchip/build24.sh:/home/build/immortalwrt/build.sh" \
-              -e PROFILE=$profile \
-              -e INCLUDE_DOCKER=$include_docker \
-              -e ROOTFS_PARTSIZE=$rootfs_partsize \
-              -e ENABLE_PPPOE=${{ inputs.enable_pppoe }} \
-              -e PPPOE_ACCOUNT=${{ inputs.pppoe_account }} \
-              -e PPPOE_PASSWORD=${{ inputs.pppoe_password }} \
-              immortalwrt/imagebuilder:rockchip-armv8-openwrt-24.10.2 /bin/bash /home/build/immortalwrt/build.sh
-          done
+      #       docker run --rm -i \
+      #         --user root \
+      #         -v "${{ github.workspace }}/bin:/home/build/immortalwrt/bin" \
+      #         -v "${{ github.workspace }}/files/etc/uci-defaults:/home/build/immortalwrt/files/etc/uci-defaults" \
+      #         -v "${{ github.workspace }}/arch/arch.conf:/home/build/immortalwrt/files/etc/opkg/arch.conf" \
+      #         -v "${{ github.workspace }}/rockchip/imm.config:/home/build/immortalwrt/.config" \
+      #         -v "${{ github.workspace }}/shell:/home/build/immortalwrt/shell" \
+      #         -v "${{ github.workspace }}/rockchip/build24.sh:/home/build/immortalwrt/build.sh" \
+      #         -e PROFILE=$profile \
+      #         -e INCLUDE_DOCKER=$include_docker \
+      #         -e ROOTFS_PARTSIZE=$rootfs_partsize \
+      #         -e ENABLE_PPPOE=${{ inputs.enable_pppoe }} \
+      #         -e PPPOE_ACCOUNT=${{ inputs.pppoe_account }} \
+      #         -e PPPOE_PASSWORD=${{ inputs.pppoe_password }} \
+      #         immortalwrt/imagebuilder:rockchip-armv8-openwrt-24.10.2 /bin/bash /home/build/immortalwrt/build.sh
+      #     done
     
 
-      - name: Upload ImmortWrt as release assets
-        uses: softprops/action-gh-release@v2.2.1
-        with:
-          tag_name: Autobuild
-          name: ImmortWrt-Rockchip
-          body_path: ${{ github.workspace }}/info.md
-          files: |
-            ${{ github.workspace }}/bin/targets/rockchip/armv8/*.img.gz
-          token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # - name: Upload ImmortWrt as release assets
+      #   uses: softprops/action-gh-release@v2.2.1
+      #   with:
+      #     tag_name: Autobuild
+      #     name: ImmortWrt-Rockchip
+      #     body_path: ${{ github.workspace }}/info.md
+      #     files: |
+      #       ${{ github.workspace }}/bin/targets/rockchip/armv8/*.img.gz
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
